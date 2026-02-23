@@ -1,28 +1,28 @@
 <#
 .SYNOPSIS
-    Haalt tenant informatie op voor Azure Subscription IDs (parallel).
+    Retrieves tenant information for Azure Subscription IDs (parallel).
 
 .DESCRIPTION
-    Dit script gebruikt de ARM API om de tenant ID te achterhalen voor 
-    Azure subscriptions, en haalt vervolgens tenant details op via Microsoft Graph.
-    Verwerkt meerdere subscriptions tegelijk voor snelheid.
+    This script uses the ARM API to determine the tenant ID for 
+    Azure subscriptions, and then retrieves tenant details via Microsoft Graph.
+    Processes multiple subscriptions simultaneously for speed.
 
 .PARAMETER SubscriptionIds
-    Array van Subscription GUIDs om op te zoeken.
+    Array of Subscription GUIDs to look up.
 
 .PARAMETER IncludeGraphDetails
-    Indien opgegeven, haalt ook displayName en defaultDomainName op via Graph.
-    Vereist dat je bent ingelogd met 'az login' of een token hebt.
+    If specified, also retrieves displayName and defaultDomainName via Graph.
+    Requires being logged in with 'az login' or having a token.
 
 .PARAMETER ThrottleLimit
-    Maximum aantal parallelle requests (default: 10).
+    Maximum number of parallel requests (default: 10).
 
 .EXAMPLE
-    .\Get-TenantFromSubscriptions-Fast.ps1 -SubscriptionIds "guid1", "guid2", "guid3"
+    .\Get-TenantFromSubscriptions-pwsh.ps1 -SubscriptionIds "guid1", "guid2", "guid3"
 
 .EXAMPLE
     $subs = Get-Content .\subscriptions.txt
-    .\Get-TenantFromSubscriptions-Fast.ps1 -SubscriptionIds $subs -IncludeGraphDetails -ThrottleLimit 20
+    .\Get-TenantFromSubscriptions-pwsh.ps1 -SubscriptionIds $subs -IncludeGraphDetails -ThrottleLimit 20
 #>
 
 [CmdletBinding()]
@@ -38,21 +38,21 @@ param(
 )
 
 begin {
-    # Controleer PowerShell versie
+    # Check PowerShell version
     if ($PSVersionTable.PSVersion.Major -lt 7) {
-        Write-Error "Dit script vereist PowerShell 7+ voor parallelle verwerking. Gebruik het standaard script voor oudere versies."
+        Write-Error "This script requires PowerShell 7+ for parallel processing. Use the standard script for older versions."
         exit 1
     }
 
     $allSubscriptions = [System.Collections.ArrayList]::new()
     
-    # Haal Graph token op vooraf (1x) als IncludeGraphDetails is opgegeven
+    # Get Graph token upfront (once) if IncludeGraphDetails is specified
     $graphToken = $null
     if ($IncludeGraphDetails) {
-        Write-Host "Graph token ophalen..." -ForegroundColor Yellow
+        Write-Host "Retrieving Graph token..." -ForegroundColor Yellow
         $graphToken = az account get-access-token --resource https://graph.microsoft.com --query accessToken -o tsv 2>$null
         if (-not $graphToken) {
-            Write-Warning "Geen Graph token beschikbaar. Gebruik 'az login' eerst. Alleen tenant IDs worden opgehaald."
+            Write-Warning "No Graph token available. Use 'az login' first. Only tenant IDs will be retrieved."
         }
     }
 }
@@ -65,7 +65,7 @@ process {
             [void]$allSubscriptions.Add($subId)
         }
         else {
-            Write-Warning "Ongeldige GUID overgeslagen: $subId"
+            Write-Warning "Invalid GUID skipped: $subId"
         }
     }
 }
@@ -73,21 +73,21 @@ process {
 end {
     $totalCount = $allSubscriptions.Count
     if ($totalCount -eq 0) {
-        Write-Warning "Geen geldige subscription IDs gevonden."
+        Write-Warning "No valid subscription IDs found."
         return
     }
     
-    Write-Host "Verwerken van $totalCount subscriptions met ThrottleLimit=$ThrottleLimit..." -ForegroundColor Cyan
+    Write-Host "Processing $totalCount subscriptions with ThrottleLimit=$ThrottleLimit..." -ForegroundColor Cyan
     
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     
-    # Parallelle verwerking
+    # Parallel processing
     $results = $allSubscriptions | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
         $subId = $_
         $token = $using:graphToken
         $includeGraph = $using:IncludeGraphDetails
         
-        # Functie om tenant ID te halen uit ARM 401 response
+        # Function to get tenant ID from ARM 401 response
         function Get-TenantIdFromSubscription {
             param([string]$SubscriptionId)
             
@@ -101,7 +101,7 @@ end {
                 $response = $_.Exception.Response
                 
                 if ($null -eq $response) {
-                    return @{ Error = "Geen response: $($_.Exception.Message)" }
+                    return @{ Error = "No response: $($_.Exception.Message)" }
                 }
                 
                 $statusCode = [int]$response.StatusCode
@@ -118,16 +118,16 @@ end {
                     if ($wwwAuth -and $wwwAuth -match 'authorization_uri="https://login\.(microsoftonline\.com|windows\.net)/([^"]+)"') {
                         return @{ TenantId = $matches[2] }
                     }
-                    return @{ Error = "Kon tenant ID niet extraheren" }
+                    return @{ Error = "Could not extract tenant ID" }
                 }
                 elseif ($statusCode -eq 404) {
-                    return @{ Error = "Subscription niet gevonden" }
+                    return @{ Error = "Subscription not found" }
                 }
                 return @{ Error = "Status $statusCode" }
             }
         }
         
-        # Functie om tenant details op te halen via Graph
+        # Function to retrieve tenant details via Graph
         function Get-TenantDetails {
             param([string]$TenantId, [string]$Token)
             
@@ -151,7 +151,7 @@ end {
             }
         }
         
-        # Verwerk subscription
+        # Process subscription
         $armResult = Get-TenantIdFromSubscription -SubscriptionId $subId
         
         $result = [PSCustomObject]@{
@@ -174,7 +174,7 @@ end {
             }
         }
         else {
-            $result.TenantId = "NIET GEVONDEN"
+            $result.TenantId = "NOT FOUND"
             $result.Error = $armResult.Error
         }
         
@@ -185,20 +185,20 @@ end {
     $stopwatch.Stop()
     $elapsed = $stopwatch.Elapsed
     
-    Write-Host "`n=== RESULTATEN ($totalCount subscriptions in $($elapsed.TotalSeconds.ToString('F1'))s) ===" -ForegroundColor Green
+    Write-Host "`n=== RESULTS ($totalCount subscriptions in $($elapsed.TotalSeconds.ToString('F1'))s) ===" -ForegroundColor Green
     $results | Select-Object SubscriptionId, TenantId, DisplayName, DefaultDomainName | Format-Table -AutoSize
     
-    # Toon errors apart als die er zijn
+    # Show errors separately if any
     $errors = $results | Where-Object { $_.Error }
     if ($errors) {
-        Write-Host "=== FOUTEN ===" -ForegroundColor Red
+        Write-Host "=== ERRORS ===" -ForegroundColor Red
         $errors | Select-Object SubscriptionId, Error | Format-Table -AutoSize
     }
     
-    # Exporteer naar CSV
+    # Export to CSV
     $csvPath = Join-Path $PSScriptRoot "tenant-lookup-results.csv"
     $results | Select-Object SubscriptionId, TenantId, DisplayName, DefaultDomainName | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-    Write-Host "Resultaten opgeslagen naar: $csvPath" -ForegroundColor Yellow
+    Write-Host "Results saved to: $csvPath" -ForegroundColor Yellow
     
     return $results
 }

@@ -1,66 +1,66 @@
 # Translate SubscriptionIDs to Domains
 
-PowerShell scripts om Azure Subscription ID's te vertalen naar hun bijbehorende tenant en domain informatie.
+PowerShell scripts to translate Azure Subscription IDs to their corresponding tenant and domain information.
 
-## Beschrijving
+## Description
 
-Deze scripts gebruiken de Azure ARM API om te achterhalen bij welke Microsoft Entra tenant een Azure Subscription hoort. Optioneel kunnen ook de tenant details (displayName, defaultDomainName) worden opgehaald via Microsoft Graph.
+These scripts use the Azure ARM API to determine which Microsoft Entra tenant an Azure Subscription belongs to. Optionally, tenant details (displayName, defaultDomainName) can also be retrieved via Microsoft Graph.
 
 ## Scripts
 
 ### Get-TenantFromSubscriptions.ps1
-De standaard versie, compatibel met **PowerShell 5.1 en 7+**.
+The standard version, compatible with **PowerShell 5.1 and 7+**.
 
 ```powershell
-# Enkele subscriptions
+# Single subscriptions
 .\Get-TenantFromSubscriptions.ps1 -SubscriptionIds "guid1", "guid2"
 
-# Vanuit bestand met Graph details
+# From file with Graph details
 $subs = Get-Content .\subscriptions.txt
 .\Get-TenantFromSubscriptions.ps1 -SubscriptionIds $subs -IncludeGraphDetails
 ```
 
 ### Get-TenantFromSubscriptions-pwsh.ps1
-Snelle versie met **parallelle verwerking** (vereist PowerShell 7+).
+Fast version with **parallel processing** (requires PowerShell 7+).
 
 ```powershell
-# Met parallelle verwerking (standaard 10 tegelijk)
+# With parallel processing (default 10 concurrent)
 $subs = Get-Content .\subscriptions.txt
 .\Get-TenantFromSubscriptions-pwsh.ps1 -SubscriptionIds $subs -IncludeGraphDetails
 
-# Met aangepaste ThrottleLimit
+# With custom ThrottleLimit
 .\Get-TenantFromSubscriptions-pwsh.ps1 -SubscriptionIds $subs -IncludeGraphDetails -ThrottleLimit 20
 ```
 
 ## Parameters
 
-| Parameter | Beschrijving |
+| Parameter | Description |
 |-----------|-------------|
-| `-SubscriptionIds` | Array van Subscription GUIDs |
-| `-IncludeGraphDetails` | Haalt displayName en defaultDomainName op via Microsoft Graph |
-| `-ThrottleLimit` | (alleen pwsh versie) Maximum aantal parallelle requests (default: 10) |
+| `-SubscriptionIds` | Array of Subscription GUIDs |
+| `-IncludeGraphDetails` | Retrieves displayName and defaultDomainName via Microsoft Graph |
+| `-ThrottleLimit` | (pwsh version only) Maximum number of parallel requests (default: 10) |
 
-## Vereisten
+## Requirements
 
-- PowerShell 5.1+ (standaard script) of PowerShell 7+ (parallelle versie)
-- Azure CLI (`az`) voor Graph details (optioneel)
-- Ingelogd via `az login` als je `-IncludeGraphDetails` wilt gebruiken
+- PowerShell 5.1+ (standard script) or PowerShell 7+ (parallel version)
+- Azure CLI (`az`) for Graph details (optional)
+- Logged in via `az login` if you want to use `-IncludeGraphDetails`
 
-## Hoe het werkt
+## How it works
 
-1. Het script doet een request naar de Azure ARM API zonder authenticatie
-2. De API retourneert een 401 met de tenant ID in de `WWW-Authenticate` header
-3. Optioneel wordt de tenant info opgehaald via Microsoft Graph
+1. The script makes a request to the Azure ARM API without authentication
+2. The API returns a 401 with the tenant ID in the `WWW-Authenticate` header
+3. Optionally, tenant info is retrieved via Microsoft Graph
 
 ## Output
 
-Het script geeft een object terug met:
-- `SubscriptionId` - De oorspronkelijke subscription GUID
-- `TenantId` - De bijbehorende tenant GUID
-- `DisplayName` - Naam van de tenant (met `-IncludeGraphDetails`)
-- `DefaultDomainName` - Primaire domain (met `-IncludeGraphDetails`)
+The script returns an object with:
+- `SubscriptionId` - The original subscription GUID
+- `TenantId` - The corresponding tenant GUID
+- `DisplayName` - Name of the tenant (with `-IncludeGraphDetails`)
+- `DefaultDomainName` - Primary domain (with `-IncludeGraphDetails`)
 
-## Voorbeeld output naar CSV
+## Example output to CSV
 
 ```powershell
 $subs = Get-Content .\subscriptions.txt
@@ -68,6 +68,6 @@ $result = .\Get-TenantFromSubscriptions-pwsh.ps1 -SubscriptionIds $subs -Include
 $result | Export-Csv -Path results.csv -NoTypeInformation
 ```
 
-## Licentie
+## License
 
 MIT License

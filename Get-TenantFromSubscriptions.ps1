@@ -1,17 +1,17 @@
 <#
 .SYNOPSIS
-    Haalt tenant informatie op voor Azure Subscription IDs.
+    Retrieves tenant information for Azure Subscription IDs.
 
 .DESCRIPTION
-    Dit script gebruikt de ARM API om de tenant ID te achterhalen voor 
-    Azure subscriptions, en haalt vervolgens tenant details op via Microsoft Graph.
+    This script uses the ARM API to determine the tenant ID for 
+    Azure subscriptions, and then retrieves tenant details via Microsoft Graph.
 
 .PARAMETER SubscriptionIds
-    Array van Subscription GUIDs om op te zoeken.
+    Array of Subscription GUIDs to look up.
 
 .PARAMETER IncludeGraphDetails
-    Indien opgegeven, haalt ook displayName en defaultDomainName op via Graph.
-    Vereist dat je bent ingelogd met 'az login' of een token hebt.
+    If specified, also retrieves displayName and defaultDomainName via Graph.
+    Requires being logged in with 'az login' or having a token.
 
 .EXAMPLE
     .\Get-TenantFromSubscriptions.ps1 -SubscriptionIds "guid1", "guid2", "guid3"
@@ -33,42 +33,42 @@ param(
 begin {
     $results = [System.Collections.ArrayList]::new()
     
-    # Functie om tenant ID te halen uit ARM 401 response
+    # Function to get tenant ID from ARM 401 response
     function Get-TenantIdFromSubscription {
         param([string]$SubscriptionId)
         
         $uri = "https://management.azure.com/subscriptions/$($SubscriptionId)?api-version=2022-12-01"
         
         try {
-            # Maak request zonder authenticatie - we verwachten een 401
+            # Make request without authentication - we expect a 401
             $response = Invoke-WebRequest -Uri $uri -Method Get -ErrorAction Stop
-            # Als we hier komen is er iets onverwachts (zou niet moeten gebeuren)
+            # If we get here something unexpected happened (should not occur)
             return $null
         }
         catch {
             $response = $_.Exception.Response
             
             if ($null -eq $response) {
-                Write-Warning "Geen response ontvangen voor $SubscriptionId : $($_.Exception.Message)"
+                Write-Warning "No response received for $SubscriptionId : $($_.Exception.Message)"
                 return $null
             }
             
             $statusCode = [int]$response.StatusCode
             
             if ($statusCode -eq 401) {
-                # Haal WWW-Authenticate header op - compatibel met PS 5.1 en 7+
+                # Get WWW-Authenticate header - compatible with PS 5.1 and 7+
                 $wwwAuth = $null
                 
-                # Probeer PowerShell 7+ methode
+                # Try PowerShell 7+ method
                 if ($response.Headers.WwwAuthenticate) {
                     $wwwAuth = $response.Headers.WwwAuthenticate.ToString()
                 }
-                # Fallback voor PowerShell 5.1
+                # Fallback for PowerShell 5.1
                 elseif ($response.Headers) {
                     try {
                         $wwwAuth = $response.Headers.GetValues("WWW-Authenticate") | Select-Object -First 1
                     } catch {
-                        # Nog een alternatief voor PS 5.1
+                        # Another alternative for PS 5.1
                         try {
                             $wwwAuth = $response.Headers["WWW-Authenticate"]
                         } catch { }
@@ -79,32 +79,32 @@ begin {
                     return $matches[2]
                 }
                 else {
-                    Write-Warning "Kon tenant ID niet extraheren uit header voor $SubscriptionId"
+                    Write-Warning "Could not extract tenant ID from header for $SubscriptionId"
                     return $null
                 }
             }
             elseif ($statusCode -eq 404) {
-                Write-Warning "Subscription $SubscriptionId niet gevonden"
+                Write-Warning "Subscription $SubscriptionId not found"
                 return $null
             }
             else {
-                Write-Warning "Onverwachte fout voor $SubscriptionId (status $statusCode): $($_.Exception.Message)"
+                Write-Warning "Unexpected error for $SubscriptionId (status $statusCode): $($_.Exception.Message)"
                 return $null
             }
         }
         return $null
     }
 
-    # Functie om tenant details op te halen via Graph (vereist authenticatie)
+    # Function to retrieve tenant details via Graph (requires authentication)
     function Get-TenantDetails {
         param([string]$TenantId)
         
         try {
-            # Probeer token te krijgen via Azure CLI
+            # Try to get token via Azure CLI
             $token = az account get-access-token --resource https://graph.microsoft.com --query accessToken -o tsv 2>$null
             
             if (-not $token) {
-                Write-Warning "Geen Graph token beschikbaar. Gebruik 'az login' eerst."
+                Write-Warning "No Graph token available. Use 'az login' first."
                 return $null
             }
 
@@ -123,7 +123,7 @@ begin {
             }
         }
         catch {
-            Write-Warning "Kon geen Graph details ophalen voor tenant $TenantId : $($_.Exception.Message)"
+            Write-Warning "Could not retrieve Graph details for tenant $TenantId : $($_.Exception.Message)"
             return $null
         }
     }
@@ -131,14 +131,14 @@ begin {
 
 process {
     foreach ($subId in $SubscriptionIds) {
-        # Valideer GUID formaat
+        # Validate GUID format
         $subId = $subId.Trim()
         if (-not [guid]::TryParse($subId, [ref][guid]::Empty)) {
-            Write-Warning "Ongeldige GUID: $subId"
+            Write-Warning "Invalid GUID: $subId"
             continue
         }
 
-        Write-Host "Verwerken: $subId" -ForegroundColor Cyan
+        Write-Host "Processing: $subId" -ForegroundColor Cyan
         
         $tenantId = Get-TenantIdFromSubscription -SubscriptionId $subId
         
@@ -163,7 +163,7 @@ process {
         else {
             [void]$results.Add([PSCustomObject]@{
                 SubscriptionId    = $subId
-                TenantId          = "NIET GEVONDEN"
+                TenantId          = "NOT FOUND"
                 DisplayName       = $null
                 DefaultDomainName = $null
             })
@@ -172,13 +172,13 @@ process {
 }
 
 end {
-    Write-Host "`n=== RESULTATEN ===" -ForegroundColor Green
+    Write-Host "`n=== RESULTS ===" -ForegroundColor Green
     $results | Format-Table -AutoSize
     
-    # Exporteer ook naar CSV
+    # Export to CSV
     $csvPath = Join-Path $PSScriptRoot "tenant-lookup-results.csv"
     $results | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
-    Write-Host "Resultaten opgeslagen naar: $csvPath" -ForegroundColor Yellow
+    Write-Host "Results saved to: $csvPath" -ForegroundColor Yellow
     
     return $results
 }
