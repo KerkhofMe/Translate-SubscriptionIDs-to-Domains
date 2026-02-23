@@ -1,0 +1,17 @@
+# Output files
+*.csv
+results.txt
+
+# Input data (kan gevoelige GUIDs bevatten)
+subscriptions.txt
+
+# PowerShell logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Windows
+Thumbs.db
+Desktop.ini
